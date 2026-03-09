@@ -110,10 +110,7 @@
         </div>
 
         <div class="stage-controls">
-            <button class="stage-btn active" id="btnPreflop" onclick="setStage('preflop')">翻牌前</button>
-            <button class="stage-btn" id="btnFlop" onclick="setStage('flop')" disabled>翻牌 (3张)</button>
-            <button class="stage-btn" id="btnTurn" onclick="setStage('turn')" disabled>转牌 (1张)</button>
-            <button class="stage-btn" id="btnRiver" onclick="setStage('river')" disabled>河牌 (1张)</button>
+            <button class="stage-btn" id="btnNextStage" onclick="nextStage()">开始游戏</button>
             <button class="stage-btn reset" onclick="resetGame()">重置牌局</button>
         </div>
 
@@ -292,32 +289,70 @@
         }
 
         function updateStageButtons() {
+            const btn = document.getElementById('btnNextStage');
             const hasHand = gameState.myCards[0] && gameState.myCards[1];
             const c = gameState.communityCards;
             
-            document.getElementById('btnPreflop').disabled = false;
-            document.getElementById('btnPreflop').classList.toggle('active', gameState.currentStage === 'preflop');
+            if (!hasHand) {
+                btn.textContent = '请先选择手牌';
+                btn.disabled = true;
+                btn.classList.remove('active');
+                return;
+            }
             
-            const canFlop = hasHand && c[0] && c[1] && c[2];
-            document.getElementById('btnFlop').disabled = !canFlop;
-            document.getElementById('btnFlop').classList.toggle('active', gameState.currentStage === 'flop');
+            btn.disabled = false;
             
-            const canTurn = hasHand && gameState.currentStage === 'flop' && c[3];
-            document.getElementById('btnTurn').disabled = !canTurn;
-            document.getElementById('btnTurn').classList.toggle('active', gameState.currentStage === 'turn');
-            
-            const canRiver = hasHand && gameState.currentStage === 'turn' && c[4];
-            document.getElementById('btnRiver').disabled = !canRiver;
-            document.getElementById('btnRiver').classList.toggle('active', gameState.currentStage === 'river');
+            if (gameState.currentStage === 'preflop') {
+                if (c[0] && c[1] && c[2]) {
+                    btn.textContent = '进入翻牌阶段 →';
+                    btn.classList.add('active');
+                } else {
+                    btn.textContent = '选择3张公共牌';
+                    btn.disabled = true;
+                }
+            } else if (gameState.currentStage === 'flop') {
+                if (c[3]) {
+                    btn.textContent = '进入转牌阶段 →';
+                    btn.classList.add('active');
+                } else {
+                    btn.textContent = '选择转牌';
+                    btn.disabled = true;
+                }
+            } else if (gameState.currentStage === 'turn') {
+                if (c[4]) {
+                    btn.textContent = '进入河牌阶段 →';
+                    btn.classList.add('active');
+                } else {
+                    btn.textContent = '选择河牌';
+                    btn.disabled = true;
+                }
+            } else if (gameState.currentStage === 'river') {
+                btn.textContent = '已完成';
+                btn.disabled = true;
+                btn.classList.remove('active');
+            }
         }
 
-        function setStage(stage) {
-            if (stage !== 'preflop' && (!gameState.myCards[0] || !gameState.myCards[1])) return;
-            if (stage === 'flop' && (!gameState.communityCards[0] || !gameState.communityCards[1] || !gameState.communityCards[2])) return;
-            if (stage === 'turn' && !gameState.communityCards[3]) return;
-            if (stage === 'river' && !gameState.communityCards[4]) return;
+        function nextStage() {
+            const hasHand = gameState.myCards[0] && gameState.myCards[1];
+            const c = gameState.communityCards;
             
-            gameState.currentStage = stage;
+            if (!hasHand) return;
+            
+            if (gameState.currentStage === 'preflop') {
+                if (c[0] && c[1] && c[2]) {
+                    gameState.currentStage = 'flop';
+                }
+            } else if (gameState.currentStage === 'flop') {
+                if (c[3]) {
+                    gameState.currentStage = 'turn';
+                }
+            } else if (gameState.currentStage === 'turn') {
+                if (c[4]) {
+                    gameState.currentStage = 'river';
+                }
+            }
+            
             updateStageButtons();
             updateDisplay();
             calculateOdds();
@@ -334,6 +369,10 @@
             document.getElementById('mainOdds').textContent = '--';
             document.getElementById('mainOdds').className = 'main-odds neutral';
             document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌开始计算';
+            const btn = document.getElementById('btnNextStage');
+            btn.textContent = '开始游戏';
+            btn.disabled = false;
+            btn.classList.remove('active');
         }
 
         function calculateOdds() {
