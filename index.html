@@ -286,6 +286,23 @@
             }
             updateDisplay();
             closeCardPicker();
+            
+            // 检查是否需要自动计算
+            checkAndAutoCalculate();
+        }
+        
+        function checkAndAutoCalculate() {
+            const myCards = gameState.myCards.filter(c => c !== null);
+            if (myCards.length < 2) return; // 还没选完手牌
+            
+            const c = gameState.communityCards;
+            const communityCount = c.filter(card => card !== null).length;
+            
+            // 手牌选完 或 翻牌选完(3张) 或 转牌选完(4张) 或 河牌选完(5张)
+            if (communityCount === 0 || communityCount === 3 || communityCount === 4 || communityCount === 5) {
+                // 延迟一点计算，让UI先更新
+                setTimeout(() => calculateOdds(), 100);
+            }
         }
 
         function updateDisplay() {
@@ -328,6 +345,11 @@
                     badge.textContent = '弃';
                     seat.appendChild(badge);
                 }
+            }
+            
+            // 弃牌/恢复后自动计算（如果已经有手牌）
+            if (gameState.myCards[0] && gameState.myCards[1]) {
+                setTimeout(() => calculateOdds(), 100);
             }
         }
 
