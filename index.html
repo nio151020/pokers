@@ -55,7 +55,8 @@
         .stage-btn { padding: 12px 24px; border: none; border-radius: 8px; background: #3498db; color: #fff; font-size: 14px; cursor: pointer; transition: all 0.2s; }
         .stage-btn:hover:not(:disabled) { background: #2980b9; transform: translateY(-2px); }
         .stage-btn:disabled { background: #444; cursor: not-allowed; transform: none; opacity: 0.5; }
-        .stage-btn.active { background: #2ecc71; }
+        .stage-btn.calc { background: #2ecc71; font-size: 18px; padding: 15px 40px; }
+        .stage-btn.calc:hover:not(:disabled) { background: #27ae60; }
         .stage-btn.reset { background: #e74c3c; }
         .stage-btn.reset:hover { background: #c0392b; }
         .card-picker-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
@@ -79,6 +80,8 @@
         .calculating { display: inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-left: 10px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .calc-info { font-size: 12px; color: #888; margin-top: 10px; }
+        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(231, 76, 60, 0.9); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 2000; animation: fadeInOut 2s ease; }
+        @keyframes fadeInOut { 0% { opacity: 0; transform: translateX(-50%) translateY(20px); } 10% { opacity: 1; transform: translateX(-50%) translateY(0); } 90% { opacity: 1; transform: translateX(-50%) translateY(0); } 100% { opacity: 0; transform: translateX(-50%) translateY(-20px); } }
     </style>
 </head>
 <body>
@@ -106,11 +109,11 @@
                 <div class="odds-item"><div class="odds-item-label">败率</div><div class="odds-item-value lose" id="loseRate">--</div></div>
             </div>
             <div class="main-odds neutral" id="mainOdds">--</div>
-            <div class="calc-info" id="calcInfo">选择你的手牌和公共牌开始计算</div>
+            <div class="calc-info" id="calcInfo">选择你的手牌和公共牌，点击计算概率</div>
         </div>
 
         <div class="stage-controls">
-            <button class="stage-btn" id="btnNextStage" onclick="nextStage()">开始游戏</button>
+            <button class="stage-btn calc" id="btnCalc" onclick="calculateOdds()">计算概率</button>
             <button class="stage-btn reset" onclick="resetGame()">重置牌局</button>
         </div>
 
@@ -169,17 +172,15 @@
 
     <script>
         const suits = ['♠', '♥', '♣', '♦'], ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'], suitNames = ['黑桃', '红桃', '梅花', '方块'];
-        let gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', playerCount: 5 };
+        let gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), playerCount: 5 };
         let currentPicker = { type: null, index: null };
 
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('playerCount').addEventListener('change', function() {
                 gameState.playerCount = parseInt(this.value);
                 updatePlayerDisplay();
-                calculateOdds();
             });
             updatePlayerDisplay();
-            updateStageButtons();
         });
 
         function updatePlayerDisplay() {
@@ -198,14 +199,60 @@
         }
 
         function canSelectCommunity(index) {
-            if (gameState.currentStage === 'preflop') return index === 0 || index === 1 || index === 2;
-            if (gameState.currentStage === 'flop') return index === 3;
-            if (gameState.currentStage === 'turn') return index === 4;
+            const hasHand = gameState.myCards[0] && gameState.myCards[1];
+            const c = gameState.communityCards;
+            
+            if (!hasHand) {
+                showToast('请先选择你的手牌');
+                return false;
+            }
+            
+            // 翻牌 (0,1,2) - 必须先选完才能选转牌
+            if (index === 0 || index === 1 || index === 2) {
+                return true;
+            }
+            
+            // 转牌 (3) - 必须先选完3张翻牌
+            if (index === 3) {
+                if (!c[0] || !c[1] || !c[2]) {
+                    showToast('请先选择3张翻牌');
+                    return false;
+                }
+                return true;
+            }
+            
+            // 河牌 (4) - 必须先选转牌
+            if (index === 4) {
+                if (!c[0] || !c[1] || !c[2]) {
+                    showToast('请先选择3张翻牌');
+                    return false;
+                }
+                if (!c[3]) {
+                    showToast('请先选择转牌');
+                    return false;
+                }
+                return true;
+            }
+            
             return false;
         }
 
+        function showToast(message) {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 2000);
+        }
+
         function openCardPicker(type, index) {
-            if (type === 'community' && !canSelectCommunity(index)) return;
+            if (type === 'community') {
+                if (!canSelectCommunity(index)) return;
+            }
             currentPicker = { type: type, index: index };
             const used = getUsedCards();
             let html = '';
@@ -239,8 +286,6 @@
             }
             updateDisplay();
             closeCardPicker();
-            updateStageButtons();
-            calculateOdds();
         }
 
         function updateDisplay() {
@@ -259,8 +304,7 @@
                     const suitClass = card.suit === 1 || card.suit === 3 ? 'suit-red' : 'suit-black';
                     return '<div class="card-slot" onclick="openCardPicker(\'community\', ' + i + ')"><span class="' + suitClass + '">' + ranks[card.rank] + suits[card.suit] + '</span></div>';
                 }
-                const canSelect = canSelectCommunity(i);
-                return '<div class="card-slot empty" onclick="openCardPicker(\'community\', ' + i + ')" style="' + (canSelect ? '' : 'opacity:0.3;cursor:not-allowed') + '"></div>';
+                return '<div class="card-slot empty" onclick="openCardPicker(\'community\', ' + i + ')"></div>';
             }).join('');
         }
 
@@ -285,105 +329,31 @@
                     seat.appendChild(badge);
                 }
             }
-            calculateOdds();
-        }
-
-        function updateStageButtons() {
-            const btn = document.getElementById('btnNextStage');
-            const hasHand = gameState.myCards[0] && gameState.myCards[1];
-            const c = gameState.communityCards;
-            
-            if (!hasHand) {
-                btn.textContent = '请先选择手牌';
-                btn.disabled = true;
-                btn.classList.remove('active');
-                return;
-            }
-            
-            btn.disabled = false;
-            
-            if (gameState.currentStage === 'preflop') {
-                if (c[0] && c[1] && c[2]) {
-                    btn.textContent = '进入翻牌阶段 →';
-                    btn.classList.add('active');
-                } else {
-                    btn.textContent = '选择3张公共牌';
-                    btn.disabled = true;
-                }
-            } else if (gameState.currentStage === 'flop') {
-                if (c[3]) {
-                    btn.textContent = '进入转牌阶段 →';
-                    btn.classList.add('active');
-                } else {
-                    btn.textContent = '选择转牌';
-                    btn.disabled = true;
-                }
-            } else if (gameState.currentStage === 'turn') {
-                if (c[4]) {
-                    btn.textContent = '进入河牌阶段 →';
-                    btn.classList.add('active');
-                } else {
-                    btn.textContent = '选择河牌';
-                    btn.disabled = true;
-                }
-            } else if (gameState.currentStage === 'river') {
-                btn.textContent = '已完成';
-                btn.disabled = true;
-                btn.classList.remove('active');
-            }
-        }
-
-        function nextStage() {
-            const hasHand = gameState.myCards[0] && gameState.myCards[1];
-            const c = gameState.communityCards;
-            
-            if (!hasHand) return;
-            
-            if (gameState.currentStage === 'preflop') {
-                if (c[0] && c[1] && c[2]) {
-                    gameState.currentStage = 'flop';
-                }
-            } else if (gameState.currentStage === 'flop') {
-                if (c[3]) {
-                    gameState.currentStage = 'turn';
-                }
-            } else if (gameState.currentStage === 'turn') {
-                if (c[4]) {
-                    gameState.currentStage = 'river';
-                }
-            }
-            
-            updateStageButtons();
-            updateDisplay();
-            calculateOdds();
         }
 
         function resetGame() {
-            gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', playerCount: gameState.playerCount };
+            gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), playerCount: gameState.playerCount };
             updateDisplay();
-            updateStageButtons();
             document.querySelectorAll('.player-seat').forEach(seat => { seat.classList.remove('folded'); const badge = seat.querySelector('.fold-badge'); if (badge) badge.remove(); });
             document.getElementById('winRate').textContent = '--';
             document.getElementById('tieRate').textContent = '--';
             document.getElementById('loseRate').textContent = '--';
             document.getElementById('mainOdds').textContent = '--';
             document.getElementById('mainOdds').className = 'main-odds neutral';
-            document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌开始计算';
-            const btn = document.getElementById('btnNextStage');
-            btn.textContent = '开始游戏';
-            btn.disabled = false;
-            btn.classList.remove('active');
+            document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌，点击计算概率';
         }
 
         function calculateOdds() {
             const myCards = gameState.myCards.filter(c => c !== null);
-            const communityCards = gameState.communityCards.filter(c => c !== null);
             if (myCards.length < 2) {
-                document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌开始计算';
+                showToast('请先选择你的手牌');
                 return;
             }
+            
+            const communityCards = gameState.communityCards.filter(c => c !== null);
             const simCount = parseInt(document.getElementById('simCount').value) || 50000;
             document.getElementById('calcInfo').innerHTML = '正在模拟 ' + simCount.toLocaleString() + ' 局... <span class="calculating"></span>';
+            
             setTimeout(() => {
                 const result = monteCarloSimulate(myCards, communityCards, simCount);
                 displayResult(result);
