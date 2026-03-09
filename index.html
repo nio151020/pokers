@@ -51,12 +51,6 @@
         .odds-item-value.win { color: #2ecc71; }
         .odds-item-value.tie { color: #f1c40f; }
         .odds-item-value.lose { color: #e74c3c; }
-        .history-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); }
-        .history-title { font-size: 16px; margin-bottom: 15px; color: #aaa; }
-        .history-list { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
-        .history-item { background: rgba(255,255,255,0.1); padding: 10px 15px; border-radius: 8px; min-width: 80px; }
-        .history-stage { font-size: 12px; color: #aaa; margin-bottom: 5px; }
-        .history-odds { font-size: 20px; font-weight: bold; }
         .stage-controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
         .stage-btn { padding: 12px 24px; border: none; border-radius: 8px; background: #3498db; color: #fff; font-size: 14px; cursor: pointer; transition: all 0.2s; }
         .stage-btn:hover:not(:disabled) { background: #2980b9; transform: translateY(-2px); }
@@ -113,10 +107,6 @@
             </div>
             <div class="main-odds neutral" id="mainOdds">--</div>
             <div class="calc-info" id="calcInfo">选择你的手牌和公共牌开始计算</div>
-            <div class="history-section" id="historySection" style="display: none;">
-                <div class="history-title">📊 胜率变化历史</div>
-                <div class="history-list" id="historyList"></div>
-            </div>
         </div>
 
         <div class="stage-controls">
@@ -182,7 +172,7 @@
 
     <script>
         const suits = ['♠', '♥', '♣', '♦'], ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'], suitNames = ['黑桃', '红桃', '梅花', '方块'];
-        let gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', history: [], playerCount: 5 };
+        let gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', playerCount: 5 };
         let currentPicker = { type: null, index: null };
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -214,14 +204,11 @@
             if (gameState.currentStage === 'preflop') return index === 0 || index === 1 || index === 2;
             if (gameState.currentStage === 'flop') return index === 3;
             if (gameState.currentStage === 'turn') return index === 4;
-            if (gameState.currentStage === 'river') return false;
             return false;
         }
 
         function openCardPicker(type, index) {
-            if (type === 'community') {
-                if (!canSelectCommunity(index)) return;
-            }
+            if (type === 'community' && !canSelectCommunity(index)) return;
             currentPicker = { type: type, index: index };
             const used = getUsedCards();
             let html = '';
@@ -333,33 +320,14 @@
             gameState.currentStage = stage;
             updateStageButtons();
             updateDisplay();
-            if (stage !== 'preflop') recordHistory(stage);
             calculateOdds();
         }
 
-        function recordHistory(stage) {
-            const winRate = document.getElementById('winRate').textContent;
-            if (winRate === '--') return;
-            const stageNames = { 'flop': '翻牌', 'turn': '转牌', 'river': '河牌' };
-            gameState.history.push({ stage: stageNames[stage], odds: winRate });
-            updateHistoryDisplay();
-        }
-
-        function updateHistoryDisplay() {
-            const section = document.getElementById('historySection');
-            const list = document.getElementById('historyList');
-            if (gameState.history.length === 0) { section.style.display = 'none'; return; }
-            section.style.display = 'block';
-            list.innerHTML = gameState.history.map(h => '<div class="history-item"><div class="history-stage">' + h.stage + '</div><div class="history-odds">' + h.odds + '</div></div>').join('');
-        }
-
         function resetGame() {
-            gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', history: [], playerCount: gameState.playerCount };
+            gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', playerCount: gameState.playerCount };
             updateDisplay();
             updateStageButtons();
             document.querySelectorAll('.player-seat').forEach(seat => { seat.classList.remove('folded'); const badge = seat.querySelector('.fold-badge'); if (badge) badge.remove(); });
-            document.getElementById('historySection').style.display = 'none';
-            document.getElementById('historyList').innerHTML = '';
             document.getElementById('winRate').textContent = '--';
             document.getElementById('tieRate').textContent = '--';
             document.getElementById('loseRate').textContent = '--';
