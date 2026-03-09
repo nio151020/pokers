@@ -426,3 +426,361 @@
             else if (triples.length > 0 && pairs.length > 0) { handRank = 6; kickers = [triples[0], pairs[0]]; }
             else if (isFlush !== -1) { handRank = 5; kickers = sorted.filter(c => c.suit === isFlush).slice(0, 5).map(c => c.rank); }
             else if (isStraight !== -1) { handRank = 4;
+        const suits = ['♠', '♥', '♣', '♦'], ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'], suitNames = ['黑桃', '红桃', '梅花', '方块'];
+        let gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', history: [], playerCount: 5 };
+        let currentPicker = { type: null, index: null };
+
+        document.getElementById('playerCount').addEventListener('change', function() {
+            gameState.playerCount = parseInt(this.value);
+            updatePlayerDisplay();
+            calculateOdds();
+        });
+
+        function updatePlayerDisplay() {
+            const count = gameState.playerCount;
+            for (let i = 1; i <= 4; i++) {
+                const seat = document.getElementById('seat' + i);
+                if (seat) seat.style.display = i < count ? 'block' : 'none';
+            }
+        }
+
+        function getUsedCards() {
+            const used = new Set();
+            gameState.myCards.forEach(c => { if (c) used.add(c.suit * 13 + c.rank); });
+            gameState.communityCards.forEach(c => { if (c) used.add(c.suit * 13 + c.rank); });
+            return used;
+        }
+
+        function canSelectCommunity(index) {
+            if (gameState.currentStage === 'preflop') return false;
+            if (gameState.currentStage === 'flop') return index < 3;
+            if (gameState.currentStage === 'turn') return index < 4;
+            if (gameState.currentStage === 'river') return index < 5;
+            return false;
+        }
+
+        function openCardPicker(type, index) {
+            if (type === 'community' && !canSelectCommunity(index)) return;
+            currentPicker = { type: type, index: index };
+            const used = getUsedCards();
+            let html = '';
+            for (let s = 0; s < 4; s++) {
+                const suitClass = s === 1 || s === 3 ? 'red' : 'black';
+                html += '<div class="suit-section"><div class="suit-label"><span class="suit-symbol ' + suitClass + '">' + suits[s] + '</span>' + suitNames[s] + '</div><div class="rank-row">';
+                for (let r = 0; r < 13; r++) {
+                    const cardId = s * 13 + r;
+                    const isUsed = used.has(cardId);
+                    const currentCard = type === 'player' ? gameState.myCards[index] : gameState.communityCards[index];
+                    const isSelected = currentCard && currentCard.suit === s && currentCard.rank === r;
+                    html += '<button class="card-btn" onclick="selectCard(' + s + ', ' + r + ')" ' + (isUsed && !isSelected ? 'disabled' : '') + '><span class="suit-' + suitClass + '">' + ranks[r] + suits[s] + '</span></button>';
+                }
+                html += '</div></div>';
+            }
+            document.getElementById('cardPickerContent').innerHTML = html;
+            document.getElementById('cardPickerOverlay').classList.add('active');
+        }
+
+        function closeCardPicker(event) {
+            if (!event || event.target.id === 'cardPickerOverlay') {
+                document.getElementById('cardPickerOverlay').classList.remove('active');
+            }
+        }
+
+        function selectCard(suit, rank) {
+            if (currentPicker.type === 'player') {
+                gameState.myCards[currentPicker.index] = { suit: suit, rank: rank };
+            } else {
+                gameState.communityCards[currentPicker.index] = { suit: suit, rank: rank };
+            }
+            updateDisplay();
+            closeCardPicker();
+            updateStageButtons();
+            calculateOdds();
+        }
+
+        function updateDisplay() {
+            const myCardsEl = document.getElementById('myCards');
+            myCardsEl.innerHTML = gameState.myCards.map((card, i) => {
+                if (card) {
+                    const suitClass = card.suit === 1 || card.suit === 3 ? 'suit-red' : 'suit-black';
+                    return '<div class="card-slot" onclick="openCardPicker(\'player\', ' + i + ')"><span class="' + suitClass + '">' + ranks[card.rank] + suits[card.suit] + '</span></div>';
+                }
+                return '<div class="card-slot empty" onclick="openCardPicker(\'player\', ' + i + ')"></div>';
+            }).join('');
+
+            const communityCardsEl = document.getElementById('communityCards');
+            communityCardsEl.innerHTML = gameState.communityCards.map((card, i) => {
+                if (card) {
+                    const suitClass = card.suit === 1 || card.suit === 3 ? 'suit-red' : 'suit-black';
+                    return '<div class="card-slot" onclick="openCardPicker(\'community\', ' + i + ')"><span class="' + suitClass + '">' + ranks[card.rank] + suits[card.suit] + '</span></div>';
+                }
+                const canSelect = canSelectCommunity(i);
+                return '<div class="card-slot empty" onclick="openCardPicker(\'community\', ' + i + ')" style="' + (canSelect ? '' : 'opacity:0.3;cursor:not-allowed') + '"></div>';
+            }).join('');
+        }
+
+        function toggleFold(playerIndex) {
+            const seat = document.getElementById('seat' + playerIndex);
+            if (gameState.foldedPlayers.has(playerIndex)) {
+                gameState.foldedPlayers.delete(playerIndex);
+                seat.classList.remove('folded');
+                const badge = seat.querySelector('.fold-badge');
+                if (badge) badge.remove();
+            } else {
+                gameState.foldedPlayers.add(playerIndex);
+                seat.classList.add('folded');
+                const badge = document.createElement('div');
+                badge.className = 'fold-badge';
+                badge.textContent = '弃';
+                seat.appendChild(badge);
+            }
+            calculateOdds();
+        }
+
+        function updateStageButtons() {
+            const hasHand = gameState.myCards[0] && gameState.myCards[1];
+            const c = gameState.communityCards;
+            
+            document.getElementById('btnPreflop').disabled = false;
+            document.getElementById('btnPreflop').classList.toggle('active', gameState.currentStage === 'preflop');
+            
+            const canFlop = hasHand && c[0] && c[1] && c[2];
+            document.getElementById('btnFlop').disabled = !canFlop;
+            document.getElementById('btnFlop').classList.toggle('active', gameState.currentStage === 'flop');
+            
+            const canTurn = hasHand && gameState.currentStage === 'flop' && c[3];
+            document.getElementById('btnTurn').disabled = !canTurn;
+            document.getElementById('btnTurn').classList.toggle('active', gameState.currentStage === 'turn');
+            
+            const canRiver = hasHand && gameState.currentStage === 'turn' && c[4];
+            document.getElementById('btnRiver').disabled = !canRiver;
+            document.getElementById('btnRiver').classList.toggle('active', gameState.currentStage === 'river');
+        }
+
+        function setStage(stage) {
+            if (stage !== 'preflop' && (!gameState.myCards[0] || !gameState.myCards[1])) return;
+            if (stage === 'flop' && (!gameState.communityCards[0] || !gameState.communityCards[1] || !gameState.communityCards[2])) return;
+            if (stage === 'turn' && !gameState.communityCards[3]) return;
+            if (stage === 'river' && !gameState.communityCards[4]) return;
+            
+            gameState.currentStage = stage;
+            updateStageButtons();
+            updateDisplay();
+            if (stage !== 'preflop') recordHistory(stage);
+            calculateOdds();
+        }
+
+        function recordHistory(stage) {
+            const winRate = document.getElementById('winRate').textContent;
+            if (winRate === '--') return;
+            const stageNames = { 'flop': '翻牌', 'turn': '转牌', 'river': '河牌' };
+            gameState.history.push({ stage: stageNames[stage], odds: winRate });
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const section = document.getElementById('historySection');
+            const list = document.getElementById('historyList');
+            if (gameState.history.length === 0) { section.style.display = 'none'; return; }
+            section.style.display = 'block';
+            list.innerHTML = gameState.history.map(h => '<div class="history-item"><div class="history-stage">' + h.stage + '</div><div class="history-odds">' + h.odds + '</div></div>').join('');
+        }
+
+        function resetGame() {
+            gameState = { myCards: [null, null], communityCards: [null, null, null, null, null], foldedPlayers: new Set(), currentStage: 'preflop', history: [], playerCount: gameState.playerCount };
+            updateDisplay();
+            updateStageButtons();
+            document.querySelectorAll('.player-seat').forEach(seat => { seat.classList.remove('folded'); const badge = seat.querySelector('.fold-badge'); if (badge) badge.remove(); });
+            document.getElementById('historySection').style.display = 'none';
+            document.getElementById('historyList').innerHTML = '';
+            document.getElementById('winRate').textContent = '--';
+            document.getElementById('tieRate').textContent = '--';
+            document.getElementById('loseRate').textContent = '--';
+            document.getElementById('mainOdds').textContent = '--';
+            document.getElementById('mainOdds').className = 'main-odds neutral';
+            document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌开始计算';
+        }
+
+        function calculateOdds() {
+            const myCards = gameState.myCards.filter(c => c !== null);
+            const communityCards = gameState.communityCards.filter(c => c !== null);
+            if (myCards.length < 2) {
+                document.getElementById('calcInfo').textContent = '选择你的手牌和公共牌开始计算';
+                return;
+            }
+            const simCount = parseInt(document.getElementById('simCount').value) || 50000;
+            document.getElementById('calcInfo').innerHTML = '正在模拟 ' + simCount.toLocaleString() + ' 局... <span class="calculating"></span>';
+            setTimeout(() => {
+                const result = monteCarloSimulate(myCards, communityCards, simCount);
+                displayResult(result);
+            }, 10);
+        }
+
+        function displayResult(result) {
+            const winRate = (result.wins / result.total * 100).toFixed(1);
+            const tieRate = (result.ties / result.total * 100).toFixed(1);
+            const loseRate = (result.losses / result.total * 100).toFixed(1);
+            document.getElementById('winRate').textContent = winRate + '%';
+            document.getElementById('tieRate').textContent = tieRate + '%';
+            document.getElementById('loseRate').textContent = loseRate + '%';
+            document.getElementById('mainOdds').textContent = winRate + '%';
+            const mainOddsEl = document.getElementById('mainOdds');
+            if (parseFloat(winRate) > 50) mainOddsEl.className = 'main-odds winning';
+            else if (parseFloat(winRate) > 30) mainOddsEl.className = 'main-odds neutral';
+            else mainOddsEl.className = 'main-odds losing';
+            document.getElementById('calcInfo').textContent = '基于 ' + result.total.toLocaleString() + ' 次模拟';
+        }
+
+        // 牌力评估和蒙特卡洛模拟
+        function monteCarloSimulate(myCards, communityCards, simCount) {
+            let wins = 0, ties = 0, losses = 0;
+            const usedCards = new Set();
+            myCards.forEach(c => usedCards.add(c.suit * 13 + c.rank));
+            communityCards.forEach(c => usedCards.add(c.suit * 13 + c.rank));
+            const activeOpponents = [];
+            for (let i = 1; i < gameState.playerCount; i++) if (!gameState.foldedPlayers.has(i)) activeOpponents.push(i);
+            
+            for (let sim = 0; sim < simCount; sim++) {
+                let deck = [];
+                for (let s = 0; s < 4; s++) for (let r = 0; r < 13; r++) { 
+                    const cardId = s * 13 + r; 
+                    if (!usedCards.has(cardId)) deck.push({ suit: s, rank: r }); 
+                }
+                for (let i = deck.length - 1; i > 0; i--) { 
+                    const j = Math.floor(Math.random() * (i + 1)); 
+                    const tmp = deck[i]; deck[i] = deck[j]; deck[j] = tmp;
+                }
+                
+                const myEval = evaluateHandStrength([...myCards, ...communityCards]);
+                let isTie = false, isWin = true;
+                
+                for (let opp of activeOpponents) {
+                    const oppCards = [deck.pop(), deck.pop()];
+                    const oppEval = evaluateHandStrength([...oppCards, ...communityCards]);
+                    const cmp = compareHandStrength(myEval, oppEval);
+                    
+                    if (cmp < 0) { isWin = false; break; }
+                    else if (cmp === 0) isTie = true;
+                }
+                
+                if (isWin && !isTie) wins++;
+                else if (isTie) ties++;
+                else losses++;
+            }
+            return { wins: wins, ties: ties, losses: losses, total: simCount };
+        }
+
+        // 评估牌力，返回对象便于比较
+        function evaluateHandStrength(cards) {
+            const sorted = cards.slice().sort((a, b) => b.rank - a.rank);
+            
+            // 统计花色
+            const suitCounts = {};
+            cards.forEach(c => { suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1; });
+            let flushSuit = -1;
+            for (let s in suitCounts) {
+                if (suitCounts[s] >= 5) { flushSuit = parseInt(s); break; }
+            }
+            
+            // 统计点数
+            const rankCounts = {};
+            cards.forEach(c => { rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1; });
+            
+            const quads = [], triples = [], pairs = [];
+            for (let r in rankCounts) {
+                const rank = parseInt(r);
+                if (rankCounts[r] === 4) quads.push(rank);
+                else if (rankCounts[r] === 3) triples.push(rank);
+                else if (rankCounts[r] === 2) pairs.push(rank);
+            }
+            pairs.sort((a, b) => b - a);
+            triples.sort((a, b) => b - a);
+            
+            // 检测顺子
+            const uniqueRanks = [...new Set(sorted.map(c => c.rank))].sort((a, b) => b - a);
+            let straightHigh = -1;
+            for (let i = 0; i <= uniqueRanks.length - 5; i++) {
+                if (uniqueRanks[i] - uniqueRanks[i + 4] === 4) {
+                    straightHigh = uniqueRanks[i];
+                    break;
+                }
+            }
+            // A-2-3-4-5 顺子
+            if (straightHigh === -1 && uniqueRanks.includes(12) && uniqueRanks.includes(0) && 
+                uniqueRanks.includes(1) && uniqueRanks.includes(2) && uniqueRanks.includes(3)) {
+                straightHigh = 3;
+            }
+            
+            // 同花顺
+            if (flushSuit !== -1 && straightHigh !== -1) {
+                const flushCards = cards.filter(c => c.suit === flushSuit).sort((a, b) => b.rank - a.rank);
+                const flushRanks = [...new Set(flushCards.map(c => c.rank))].sort((a, b) => b - a);
+                for (let i = 0; i <= flushRanks.length - 5; i++) {
+                    if (flushRanks[i] - flushRanks[i + 4] === 4) {
+                        return { rank: 8, kickers: [flushRanks[i]] };
+                    }
+                }
+                if (flushRanks.includes(12) && flushRanks.includes(0) && flushRanks.includes(1) && 
+                    flushRanks.includes(2) && flushRanks.includes(3)) {
+                    return { rank: 8, kickers: [3] };
+                }
+            }
+            
+            // 四条
+            if (quads.length > 0) {
+                const kicker = sorted.find(c => c.rank !== quads[0]);
+                return { rank: 7, kickers: [quads[0], kicker ? kicker.rank : 0] };
+            }
+            
+            // 葫芦
+            if (triples.length > 0 && pairs.length > 0) {
+                return { rank: 6, kickers: [triples[0], pairs[0]] };
+            }
+            
+            // 同花
+            if (flushSuit !== -1) {
+                const flushCards = cards.filter(c => c.suit === flushSuit).sort((a, b) => b.rank - a.rank);
+                return { rank: 5, kickers: flushCards.slice(0, 5).map(c => c.rank) };
+            }
+            
+            // 顺子
+            if (straightHigh !== -1) {
+                return { rank: 4, kickers: [straightHigh] };
+            }
+            
+            // 三条
+            if (triples.length > 0) {
+                const kickers = sorted.filter(c => c.rank !== triples[0]).slice(0, 2).map(c => c.rank);
+                return { rank: 3, kickers: [triples[0], ...kickers] };
+            }
+            
+            // 两对
+            if (pairs.length >= 2) {
+                const kicker = sorted.find(c => c.rank !== pairs[0] && c.rank !== pairs[1]);
+                return { rank: 2, kickers: [pairs[0], pairs[1], kicker ? kicker.rank : 0] };
+            }
+            
+            // 一对
+            if (pairs.length === 1) {
+                const kickers = sorted.filter(c => c.rank !== pairs[0]).slice(0, 3).map(c => c.rank);
+                return { rank: 1, kickers: [pairs[0], ...kickers] };
+            }
+            
+            // 高牌
+            return { rank: 0, kickers: sorted.slice(0, 5).map(c => c.rank) };
+        }
+
+        function compareHandStrength(h1, h2) {
+            if (h1.rank !== h2.rank) return h1.rank - h2.rank;
+            for (let i = 0; i < Math.min(h1.kickers.length, h2.kickers.length); i++) {
+                if (h1.kickers[i] !== h2.kickers[i]) return h1.kickers[i] - h2.kickers[i];
+            }
+            return 0;
+        }
+
+        // 初始化
+        updatePlayerDisplay();
+        updateStageButtons();
+    </script>
+</body>
+</html>
