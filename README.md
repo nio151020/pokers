@@ -1,5 +1,7 @@
 # 德州扑克胜率计算器
 
+Win Probability Calculation in Texas Hold'em
+
 一个基于蒙特卡洛模拟的德州扑克胜率计算工具，支持 3-5 人对局。
 
 ## 功能特点
@@ -18,15 +20,11 @@
 4. 点击"弃牌"按钮标记已弃牌的对手
 5. 实时查看胜率变化
 
+## 在线体验
+
+https://nio151020.github.io/pokers/
+
 ## 技术栈
 
 - 纯 HTML + CSS + JavaScript
 - 无需后端，完全前端计算
-
-## 在线体验
-
-https://[你的用户名].github.io/poker-odds/
-
-## 本地运行
-
-直接在浏览器中打开 `index.html` 即可使用。
